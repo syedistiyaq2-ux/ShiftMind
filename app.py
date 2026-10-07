@@ -1,5 +1,5 @@
-import html
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -8,7 +8,7 @@ from hindsight_client import Hindsight
 
 
 # ============================================================
-# SETUP
+# CONFIGURATION
 # ============================================================
 
 load_dotenv()
@@ -19,336 +19,213 @@ def clean(value):
 
 
 GROQ_API_KEY = clean(os.getenv("GROQ_API_KEY"))
-HINDSIGHT_API_URL = clean(os.getenv("HINDSIGHT_API_URL")).rstrip("/")
-HINDSIGHT_API_KEY = clean(os.getenv("HINDSIGHT_API_KEY"))
-BANK_ID = clean(os.getenv("HINDSIGHT_BANK_ID")) or "shiftmind-demo"
+
+HINDSIGHT_API_URL = clean(
+    os.getenv("HINDSIGHT_API_URL")
+).rstrip("/")
+
+HINDSIGHT_API_KEY = clean(
+    os.getenv("HINDSIGHT_API_KEY")
+)
+
+BANK_ID = (
+    clean(os.getenv("HINDSIGHT_BANK_ID"))
+    or clean(os.getenv("BANK_ID"))
+    or "shiftmind-demo"
+)
 
 GROQ_MODELS = [
-    clean(os.getenv("GROQ_MODEL")) or "openai/gpt-oss-120b",
+    clean(os.getenv("GROQ_MODEL"))
+    or "openai/gpt-oss-120b",
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
 ]
 
 
-EXAMPLES = [
-    (
-        "M-204",
-        "Machine M-204 is showing E17 sensor error again."
-    ),
-    (
-        "Conveyor C-12",
-        "Conveyor C-12 keeps stopping every few minutes during the night shift."
-    ),
-    (
-        "Forklift F-07",
-        "Forklift F-07 loses hydraulic pressure when lifting heavy pallets."
-    ),
-]
-
+# ============================================================
+# PAGE SETTINGS
+# ============================================================
 
 st.set_page_config(
     page_title="ShiftMind",
     page_icon="🧠",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 
 # ============================================================
-# STYLE
+# SMALL, SAFE UI STYLING
+# ============================================================
+#
+# IMPORTANT:
+# No fixed position
+# No sticky elements
+# No fixed-height containers
+# No custom full-screen overlays
+# No separate scrolling areas
+#
+# This only improves the visibility of input fields.
 # ============================================================
 
 st.markdown(
     """
-<style>
-
-#MainMenu, footer {
-    visibility: hidden;
-}
-
-.block-container {
-    padding-top: 1.6rem;
-    padding-bottom: 3rem;
-    max-width: 1250px;
-}
-
-
-/* HERO */
-
-.hero {
-    background: linear-gradient(
-        135deg,
-        #4f46e5 0%,
-        #7c3aed 50%,
-        #db2777 100%
-    );
-
-    border-radius: 20px;
-    padding: 34px 38px;
-    color: #ffffff;
-    margin-bottom: 22px;
-
-    box-shadow:
-        0 10px 30px rgba(79, 70, 229, 0.25);
-}
-
-.hero-title {
-    font-size: 40px;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-    margin: 0;
-}
-
-.hero-sub {
-    font-size: 17px;
-    opacity: 0.92;
-    margin-top: 6px;
-}
-
-.pill {
-    display: inline-block;
-
-    background: rgba(255,255,255,0.18);
-    border: 1px solid rgba(255,255,255,0.3);
-
-    border-radius: 999px;
-
-    padding: 4px 14px;
-
-    font-size: 13px;
-
-    margin: 14px 8px 0 0;
-}
-
-
-/* KPI */
-
-.kpi {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-
-    padding: 16px 18px;
-
-    border-radius: 16px;
-
-    border: 1px solid rgba(128,128,128,0.22);
-
-    background: rgba(128,128,128,0.07);
-}
-
-.kpi-icon {
-    font-size: 26px;
-
-    width: 48px;
-    height: 48px;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    border-radius: 12px;
-
-    background: rgba(124,58,237,0.15);
-}
-
-.kpi-label {
-    font-size: 12px;
-
-    text-transform: uppercase;
-
-    letter-spacing: 0.8px;
-
-    opacity: 0.65;
-}
-
-.kpi-value {
-    font-size: 22px;
-
-    font-weight: 700;
-}
-
-
-/* PROCESS STEPS */
-
-.steps {
-    display: flex;
-
-    gap: 10px;
-
-    margin: 18px 0 8px 0;
-
-    flex-wrap: wrap;
-}
-
-.step {
-    flex: 1;
-
-    min-width: 130px;
-
-    text-align: center;
-
-    padding: 10px 12px;
-
-    border-radius: 12px;
-
-    font-size: 14px;
-
-    font-weight: 600;
-
-    border: 1px solid rgba(128,128,128,0.25);
-
-    opacity: 0.55;
-}
-
-.step.done {
-    background: rgba(34,197,94,0.14);
-
-    border-color: rgba(34,197,94,0.5);
-
-    opacity: 1;
-}
-
-.step.active {
-    background: rgba(124,58,237,0.16);
-
-    border-color: rgba(124,58,237,0.6);
-
-    opacity: 1;
-}
-
-
-/* MEMORY CARDS */
-
-.mem-card {
-    padding: 16px 18px;
-
-    border-radius: 14px;
-
-    margin-bottom: 12px;
-
-    border: 1px solid rgba(128,128,128,0.22);
-
-    border-left: 5px solid #7c3aed;
-
-    background: rgba(128,128,128,0.06);
-
-    font-size: 15px;
-
-    line-height: 1.55;
-}
-
-.mem-badge {
-    display: inline-block;
-
-    font-size: 12px;
-
-    font-weight: 700;
-
-    padding: 2px 10px;
-
-    border-radius: 999px;
-
-    margin-bottom: 8px;
-
-    background: rgba(124,58,237,0.18);
-
-    color: #a78bfa;
-}
-
-
-/* SECTIONS */
-
-.section-title {
-    font-size: 22px;
-
-    font-weight: 700;
-
-    margin: 4px 0 2px 0;
-}
-
-.section-sub {
-    font-size: 14px;
-
-    opacity: 0.65;
-
-    margin-bottom: 14px;
-}
-
-
-/* CONTAINERS */
-
-div[data-testid="stVerticalBlockBorderWrapper"] {
-    border-radius: 16px;
-}
-
-
-/* PRIMARY BUTTON */
-
-button[kind="primary"] {
-    background: linear-gradient(
-        135deg,
-        #4f46e5,
-        #7c3aed
-    ) !important;
-
-    border: none !important;
-
-    font-weight: 700 !important;
-}
-
-</style>
-""",
+    <style>
+
+    /* Visible input fields */
+
+    div[data-baseweb="input"] {
+        background-color: white !important;
+        border: 1.5px solid #94a3b8 !important;
+        border-radius: 10px !important;
+    }
+
+    div[data-baseweb="textarea"] {
+        background-color: white !important;
+        border: 1.5px solid #94a3b8 !important;
+        border-radius: 10px !important;
+    }
+
+    div[data-baseweb="input"]:focus-within {
+        border: 2px solid #2563eb !important;
+    }
+
+    div[data-baseweb="textarea"]:focus-within {
+        border: 2px solid #2563eb !important;
+    }
+
+    input,
+    textarea {
+        background-color: white !important;
+    }
+
+    /* Buttons */
+
+    .stButton > button {
+        border-radius: 9px !important;
+        font-weight: 600 !important;
+        min-height: 42px !important;
+    }
+
+    /* Metrics */
+
+    div[data-testid="stMetric"] {
+        background-color: white;
+        border: 1px solid #dbe4ee;
+        border-radius: 12px;
+        padding: 14px;
+    }
+
+    /* Expanders */
+
+    details {
+        border-radius: 10px;
+        border: 1px solid #dbe4ee;
+    }
+
+    </style>
+    """,
     unsafe_allow_html=True,
 )
 
 
 # ============================================================
-# CONNECTIONS
+# SESSION STATE
+# ============================================================
+
+if "machine" not in st.session_state:
+    st.session_state.machine = "M-204"
+
+if "problem" not in st.session_state:
+    st.session_state.problem = (
+        "Machine M-204 is showing E17 sensor error again."
+    )
+
+if "memories" not in st.session_state:
+    st.session_state.memories = []
+
+if "answer" not in st.session_state:
+    st.session_state.answer = ""
+
+if "analyzed" not in st.session_state:
+    st.session_state.analyzed = False
+
+if "saved" not in st.session_state:
+    st.session_state.saved = False
+
+
+# ============================================================
+# DEMO SCENARIOS
+# ============================================================
+
+EXAMPLES = [
+    (
+        "M-204",
+        "Machine M-204 is showing E17 sensor error again.",
+    ),
+    (
+        "Conveyor C-12",
+        "Conveyor C-12 keeps stopping every few minutes during the night shift.",
+    ),
+    (
+        "Forklift F-07",
+        "Forklift F-07 loses hydraulic pressure when lifting heavy pallets.",
+    ),
+]
+
+
+# ============================================================
+# CONNECT TO GROQ + HINDSIGHT
 # ============================================================
 
 @st.cache_resource
 def get_clients():
 
-    missing = [
-        name
-        for name, value in [
-            ("GROQ_API_KEY", GROQ_API_KEY),
-            ("HINDSIGHT_API_URL", HINDSIGHT_API_URL),
-            ("HINDSIGHT_API_KEY", HINDSIGHT_API_KEY),
-        ]
-        if not value
-    ]
+    missing = []
+
+    if not GROQ_API_KEY:
+        missing.append("GROQ_API_KEY")
+
+    if not HINDSIGHT_API_URL:
+        missing.append("HINDSIGHT_API_URL")
+
+    if not HINDSIGHT_API_KEY:
+        missing.append("HINDSIGHT_API_KEY")
 
     if missing:
         raise Exception(
-            f"Missing in .env: {', '.join(missing)}"
+            "Missing in .env: "
+            + ", ".join(missing)
         )
 
     if not HINDSIGHT_API_URL.startswith("http"):
         raise Exception(
-            "HINDSIGHT_API_URL must start with http:// or https://"
+            "HINDSIGHT_API_URL must start with "
+            "http:// or https://"
         )
 
-    return (
-        Groq(api_key=GROQ_API_KEY),
-
-        Hindsight(
-            base_url=HINDSIGHT_API_URL,
-            api_key=HINDSIGHT_API_KEY,
-        ),
+    groq = Groq(
+        api_key=GROQ_API_KEY
     )
 
+    hindsight = Hindsight(
+        base_url=HINDSIGHT_API_URL,
+        api_key=HINDSIGHT_API_KEY,
+    )
 
-connection_ok = True
-connection_error = ""
+    return groq, hindsight
+
 
 try:
 
     groq_client, memory = get_clients()
 
+    services_ready = True
+    connection_error = ""
+
 except Exception as e:
 
-    connection_ok = False
+    services_ready = False
     connection_error = str(e)
 
 
@@ -357,14 +234,6 @@ except Exception as e:
 # ============================================================
 
 def recall_memories(problem):
-
-    """
-    Run Hindsight recall inside a separate worker thread.
-
-    This avoids Streamlit's running event-loop conflict.
-    """
-
-    from concurrent.futures import ThreadPoolExecutor
 
     def worker():
 
@@ -381,32 +250,60 @@ def recall_memories(problem):
         results = getattr(
             response,
             "results",
-            None
+            None,
         ) or []
 
-        return [
-            getattr(item, "text", None) or str(item)
-            for item in results[:6]
-        ]
+        memories = []
 
-    with ThreadPoolExecutor(max_workers=1) as executor:
+        for item in results[:6]:
 
-        future = executor.submit(worker)
+            text = getattr(
+                item,
+                "text",
+                None,
+            )
+
+            if text:
+                memories.append(text)
+
+            else:
+                memories.append(str(item))
+
+        return memories
+
+    # IMPORTANT:
+    # Hindsight recall runs in a worker thread
+    # because direct calls previously caused
+    # Streamlit async-loop problems.
+
+    with ThreadPoolExecutor(
+        max_workers=1
+    ) as executor:
+
+        future = executor.submit(
+            worker
+        )
 
         return future.result()
 
 
 # ============================================================
-# BUILD PROMPT
+# AI PROMPT
 # ============================================================
 
-def build_prompt(machine, problem, memories):
+def build_prompt(
+    machine,
+    problem,
+    memories,
+):
 
     if memories:
 
         memory_text = "\n\n".join(
-            f"MEMORY {i + 1}:\n{m}"
-            for i, m in enumerate(memories)
+            [
+                f"MEMORY {i + 1}:\n{item}"
+                for i, item in enumerate(memories)
+            ]
         )
 
     else:
@@ -415,67 +312,67 @@ def build_prompt(machine, problem, memories):
             "No relevant historical memories were found."
         )
 
-
     return f"""
-You are ShiftMind, an AI institutional handover assistant
-for warehouse operations.
+You are ShiftMind, an AI institutional handover
+assistant for 24/7 operational teams.
 
-Use the historical memories below.
+Your job is to help the current shift learn
+from previous operational experience.
 
-The goal is to help the current shift avoid repeating
-mistakes made by previous shifts.
+CURRENT MACHINE:
+{machine}
 
-Some memories are outcome records.
+CURRENT PROBLEM:
+{problem}
 
-Treat an outcome of "Resolved" as something that worked.
+HISTORICAL MEMORIES:
+{memory_text}
 
-Treat "Partially resolved" or "Not resolved" as something
-that failed or was incomplete.
+IMPORTANT RULES:
 
-IMPORTANT:
+1. Do not invent historical facts.
+2. Do not claim something worked unless the
+   historical memories support it.
+3. Clearly distinguish historical evidence
+   from recommendations.
+4. If there is insufficient evidence,
+   say so.
+5. Safety comes before speed.
+6. The human operator makes the final decision.
 
-Do not invent historical facts.
-
-Do not claim that something worked unless the historical
-memory supports it.
-
-The AI provides decision support.
-
-The human operator makes the final decision.
-
-Format your answer in Markdown with these headings:
+Use exactly these sections:
 
 ### 📜 What happened before
 
+Summarize relevant historical incidents.
+
 ### ❌ What failed
+
+Explain approaches that failed or did not
+fully resolve the issue.
 
 ### ✅ What worked
 
+Explain successful approaches only when
+supported by the memories.
+
 ### 🔍 What to check now
+
+Give practical next checks based on the
+historical evidence.
 
 ### ⚠️ Safety / escalation
 
-Be concise and practical.
+Mention when the operator should stop,
+escalate, or follow approved procedures.
 
-If the memories do not cover the problem, say so plainly
-and provide only cautious general guidance.
-
-HISTORICAL MEMORY:
-
-{memory_text}
-
-MACHINE:
-
-{machine}
-
-CURRENT SHIFT PROBLEM:
-
-{problem}
+Keep the response concise and easy for a
+shift operator to understand.
 """
 
 
 # ============================================================
-# GROQ REASONING
+# GROQ
 # ============================================================
 
 def ask_groq(prompt):
@@ -486,132 +383,61 @@ def ask_groq(prompt):
 
         try:
 
-            result = groq_client.chat.completions.create(
-
-                model=model,
-
-                messages=[
-                    {
-                        "role": "system",
-                        "content":
-                        "You are ShiftMind, an operational memory assistant."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    },
-                ],
-
-                temperature=0.2,
-
-                timeout=30,
+            response = (
+                groq_client
+                .chat
+                .completions
+                .create(
+                    model=model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are ShiftMind, a "
+                                "professional operational "
+                                "handover assistant."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt,
+                        },
+                    ],
+                    temperature=0.2,
+                    timeout=30,
+                )
             )
 
-            return result.choices[0].message.content
+            return response.choices[0].message.content
 
         except Exception as e:
 
-            msg = str(e)
+            last_error = str(e)
 
-            last_error = msg
-
-
-            if (
-                "401" in msg
-                or "invalid_api_key" in msg.lower()
-            ):
-
+            if "401" in last_error:
                 raise Exception(
                     "Invalid Groq API key. "
                     "Check GROQ_API_KEY in .env."
                 )
 
-
-            if "429" in msg:
-
+            if "429" in last_error:
                 raise Exception(
                     "Groq rate limit reached. "
-                    "Wait a minute and try again."
+                    "Please wait and try again."
                 )
 
-
             if (
-                "404" in msg
-                or "model" in msg.lower()
+                "404" in last_error
+                or "model" in last_error.lower()
             ):
-
                 continue
-
 
             raise
 
-
     raise Exception(
-        f"No Groq model worked. Last error: {last_error}"
+        "No Groq model worked.\n\n"
+        + last_error
     )
-
-
-# ============================================================
-# UI HELPERS
-# ============================================================
-
-def kpi(icon, label, value):
-
-    return (
-        f'<div class="kpi">'
-        f'<div class="kpi-icon">{icon}</div>'
-        f'<div>'
-        f'<div class="kpi-label">'
-        f'{html.escape(label)}'
-        f'</div>'
-        f'<div class="kpi-value">'
-        f'{html.escape(str(value))}'
-        f'</div>'
-        f'</div>'
-        f'</div>'
-    )
-
-
-def set_example(machine, problem):
-
-    st.session_state.machine = machine
-
-    st.session_state.problem = problem
-
-
-# ============================================================
-# SESSION STATE
-# ============================================================
-
-st.session_state.setdefault(
-    "memories",
-    []
-)
-
-st.session_state.setdefault(
-    "answer",
-    ""
-)
-
-st.session_state.setdefault(
-    "analyzed",
-    False
-)
-
-st.session_state.setdefault(
-    "saved",
-    False
-)
-
-st.session_state.setdefault(
-    "machine",
-    EXAMPLES[0][0]
-)
-
-st.session_state.setdefault(
-    "problem",
-    EXAMPLES[0][1]
-)
 
 
 # ============================================================
@@ -620,98 +446,126 @@ st.session_state.setdefault(
 
 with st.sidebar:
 
-    st.markdown("## 🧠 ShiftMind")
+    st.title("🧠 ShiftMind")
 
     st.caption(
-        "Memory-powered operational intelligence"
+        "Operational Intelligence & "
+        "Institutional Memory"
     )
 
     st.divider()
 
+    st.subheader("🔌 System Status")
 
-    if connection_ok:
+    if services_ready:
 
-        st.success(
-            "Settings loaded"
+        st.success("🟢 Hindsight connected")
+        st.success("🟢 AI Engine connected")
+
+    else:
+
+        st.error("🔴 Services unavailable")
+
+        st.code(
+            connection_error
         )
 
+    st.divider()
 
-        # ----------------------------------------------------
-        # TEST CONNECTIONS
-        # ----------------------------------------------------
+    st.subheader("🔄 Workflow")
+
+    st.markdown(
+        """
+        **1️⃣ Recall**
+
+        Retrieve relevant operational history.
+
+        **2️⃣ Reason**
+
+        Analyze the current problem.
+
+        **3️⃣ Resolve**
+
+        Human operator takes action.
+
+        **4️⃣ Retain**
+
+        Save the outcome for future shifts.
+        """
+    )
+
+    st.divider()
+
+    if services_ready:
 
         if st.button(
-            "🔌 Test connections",
-            use_container_width=True
+            "🔌 Test Connections",
+            use_container_width=True,
         ):
 
-            try:
+            with st.spinner(
+                "Testing Hindsight..."
+            ):
 
-                recall_memories(
-                    "connection test"
-                )
+                try:
 
-                st.success(
-                    "Hindsight: working"
-                )
+                    recall_memories(
+                        "ShiftMind connection test"
+                    )
 
-            except Exception as e:
+                    st.success(
+                        "Hindsight connection working."
+                    )
 
-                st.error(
-                    f"Hindsight: {e}"
-                )
+                except Exception as e:
 
+                    st.error(
+                        f"Hindsight error: {e}"
+                    )
 
             try:
 
                 groq_client.models.list()
 
                 st.success(
-                    "Groq: working"
+                    "Groq connection working."
                 )
 
             except Exception as e:
 
                 st.error(
-                    f"Groq: {e}"
+                    f"Groq error: {e}"
                 )
 
+        st.divider()
 
-        # ----------------------------------------------------
-        # LOAD DEMO INCIDENT
-        # ----------------------------------------------------
+        st.subheader("🧪 Demo")
 
         if st.button(
-            "📥 Load demo incident",
-            use_container_width=True
+            "Load M-204 Demo",
+            use_container_width=True,
         ):
 
             try:
 
                 memory.retain(
-
                     bank_id=BANK_ID,
-
                     content=(
                         "Warehouse incident.\n"
                         "Machine: M-204\n"
-                        "Error: E17 sensor error\n"
-                        "What was tried: Restarted the machine "
-                        "(error returned). "
-                        "Cleaned the sensor "
-                        "(error returned).\n"
-                        "What finally resolved it: "
-                        "Replacing the sensor cable resolved "
-                        "the E17 error.\n"
-                        "Outcome: Resolved"
+                        "Error: E17 sensor error.\n"
+                        "What was tried: restarted the "
+                        "machine and cleaned the sensor, "
+                        "but the error returned.\n"
+                        "What resolved the issue: "
+                        "sensor cable replacement.\n"
+                        "Outcome: Resolved."
                     ),
-
                     context="Warehouse shift incident",
                 )
 
                 st.success(
-                    "Demo incident stored. "
-                    "Give it a few seconds to index."
+                    "Demo incident stored."
                 )
 
             except Exception as e:
@@ -720,609 +574,537 @@ with st.sidebar:
                     f"Could not store demo: {e}"
                 )
 
+    st.divider()
+
+    st.caption(
+        "👤 Human operators remain responsible "
+        "for final operational decisions."
+    )
+
+
+# ============================================================
+# HEADER
+# ============================================================
+
+header_left, header_right = st.columns(
+    [5, 1]
+)
+
+with header_left:
+
+    st.title("🧠 ShiftMind")
+
+    st.caption(
+        "AI-powered institutional memory for "
+        "24/7 operational teams"
+    )
+
+with header_right:
+
+    if services_ready:
+
+        st.success(
+            "🟢 System Online"
+        )
 
     else:
 
         st.error(
-            "Connection problem"
-        )
-
-        st.code(
-            connection_error
+            "🔴 System Offline"
         )
 
 
-    st.divider()
-
-
-    st.markdown(
-        "**How it works**"
-    )
-
-    st.markdown(
-        "1. **Recall** past incidents\n"
-        "2. **Reason** with Groq\n"
-        "3. **Resolve** on the floor\n"
-        "4. **Retain** the outcome"
-    )
-
-
-    st.divider()
-
-
-    st.caption(
-        "Human operators remain responsible "
-        "for final operational decisions."
-    )
+st.divider()
 
 
 # ============================================================
 # HERO
 # ============================================================
 
-st.markdown(
+st.header(
+    "🚀 Turn previous shift experience "
+    "into better decisions."
+)
 
-    f"""
-<div class="hero">
+st.write(
+    """
+    ShiftMind remembers operational history,
+    recalls similar incidents, identifies what
+    worked and what failed, and creates a practical
+    handover brief for the current shift.
+    """
+)
 
-<div class="hero-title">
-🧠 ShiftMind
-</div>
-
-<div class="hero-sub">
-AI Institutional Handover Agent — every shift leaves knowledge.
-</div>
-
-<span class="pill">
-🗄️ Bank: {html.escape(BANK_ID)}
-</span>
-
-<span class="pill">
-⚡ Model: {html.escape(GROQ_MODELS[0])}
-</span>
-
-<span class="pill">
-🔁 Recall → Reason → Resolve → Retain
-</span>
-
-</div>
-""",
-
-    unsafe_allow_html=True,
+st.info(
+    "🔄 Recall → Reason → Resolve → Retain"
 )
 
 
-if not connection_ok:
+# ============================================================
+# KPI
+# ============================================================
 
-    st.error(
-        "ShiftMind could not connect to its services. "
-        "See the sidebar."
+st.subheader(
+    "📊 Operational Overview"
+)
+
+k1, k2, k3, k4 = st.columns(4)
+
+with k1:
+
+    st.metric(
+        "🏭 Current Asset",
+        st.session_state.machine or "—",
     )
 
-    st.stop()
+with k2:
 
+    st.metric(
+        "🧠 Memories Recalled",
+        len(st.session_state.memories),
+    )
 
-# ============================================================
-# KPI CARDS
-# ============================================================
+with k3:
 
-k1, k2, k3 = st.columns(3)
-
-
-k1.markdown(
-    kpi(
-        "🏭",
-        "Machine",
-        st.session_state.machine or "-"
-    ),
-    unsafe_allow_html=True
-)
-
-
-k2.markdown(
-    kpi(
-        "🧠",
-        "Memories recalled",
-        len(st.session_state.memories)
-    ),
-    unsafe_allow_html=True
-)
-
-
-k3.markdown(
-    kpi(
-        "📋",
-        "Shift brief",
-        "Ready"
+    st.metric(
+        "🤖 AI Analysis",
+        "Complete"
         if st.session_state.answer
-        else "Not yet"
-    ),
-    unsafe_allow_html=True
-)
-
-
-# ============================================================
-# PROGRESS STEPS
-# ============================================================
-
-done = 0
-
-
-if st.session_state.analyzed:
-
-    done = 1
-
-
-if st.session_state.answer:
-
-    done = 2
-
-
-if st.session_state.saved:
-
-    done = 4
-
-
-labels = [
-    "🔎 Recall",
-    "💡 Reason",
-    "🛠️ Resolve",
-    "💾 Retain"
-]
-
-
-step_html = '<div class="steps">'
-
-
-for i, label in enumerate(labels):
-
-    css = (
-        "done"
-        if i < done
-        else
-        ("active" if i == done else "")
+        else "Ready",
     )
 
-    step_html += (
-        f'<div class="step {css}">'
-        f'{label}'
-        f'</div>'
+with k4:
+
+    st.metric(
+        "🔄 Learning Loop",
+        "Recorded"
+        if st.session_state.saved
+        else "Active",
     )
 
 
-step_html += "</div>"
-
-
-st.markdown(
-    step_html,
-    unsafe_allow_html=True
-)
+st.divider()
 
 
 # ============================================================
-# TABS
+# MAIN TABS
 # ============================================================
 
-tab_analyze, tab_memory, tab_learn = st.tabs(
-
+tab_analyze, tab_memory, tab_outcome = st.tabs(
     [
-        "🔎 Analyze problem",
-        "🧠 Memory findings",
-        "🔄 Record outcome"
+        "🔎 Analyze Incident",
+        "🧠 Institutional Memory",
+        "💾 Record Outcome",
     ]
-
 )
 
 
 # ============================================================
-# TAB 1 — ANALYZE
+# ANALYZE INCIDENT
 # ============================================================
 
 with tab_analyze:
 
-    left, right = st.columns(
-        [1, 1.25],
-        gap="large"
+    st.subheader(
+        "🛠️ Current Shift"
     )
 
+    st.caption(
+        "Describe the operational problem currently "
+        "being handled."
+    )
 
     # --------------------------------------------------------
-    # LEFT
+    # INPUTS
     # --------------------------------------------------------
 
-    with left:
+    machine = st.text_input(
+        "🏭 Machine / Asset",
+        value=st.session_state.machine,
+        placeholder="Example: M-204",
+    )
 
-        st.markdown(
-            '<div class="section-title">'
-            '🛠️ Current shift'
-            '</div>',
-            unsafe_allow_html=True
-        )
+    problem = st.text_area(
+        "⚠️ Current Problem",
+        value=st.session_state.problem,
+        height=140,
+        placeholder=(
+            "Example: Machine M-204 is showing "
+            "E17 sensor error again."
+        ),
+    )
 
+    st.session_state.machine = machine
+    st.session_state.problem = problem
 
-        st.markdown(
-            '<div class="section-sub">'
-            'Describe what is happening right now.'
-            '</div>',
-            unsafe_allow_html=True
-        )
+    st.write("")
 
+    # --------------------------------------------------------
+    # QUICK SCENARIOS
+    # --------------------------------------------------------
 
-        machine = st.text_input(
-            "Machine / Asset",
-            key="machine"
-        )
+    st.markdown(
+        "### ⚡ Quick Scenarios"
+    )
 
+    q1, q2, q3 = st.columns(3)
 
-        problem = st.text_area(
-            "Current problem",
-            key="problem",
-            height=130
-        )
+    with q1:
 
-
-        st.caption(
-            "Quick examples"
-        )
-
-
-        ex_cols = st.columns(
-            len(EXAMPLES)
-        )
-
-
-        for col, (m, p) in zip(
-            ex_cols,
-            EXAMPLES
+        if st.button(
+            "🏭 M-204",
+            use_container_width=True,
         ):
 
-            col.button(
-
-                m,
-
-                on_click=set_example,
-
-                args=(m, p),
-
-                key=f"ex_{m}",
-
-                use_container_width=True,
+            st.session_state.machine = (
+                EXAMPLES[0][0]
             )
 
+            st.session_state.problem = (
+                EXAMPLES[0][1]
+            )
 
-        analyze = st.button(
+            st.rerun()
 
-            "🔎 Recall & Analyze",
+    with q2:
 
-            type="primary",
-
+        if st.button(
+            "⚙️ C-12",
             use_container_width=True,
-        )
+        ):
 
+            st.session_state.machine = (
+                EXAMPLES[1][0]
+            )
+
+            st.session_state.problem = (
+                EXAMPLES[1][1]
+            )
+
+            st.rerun()
+
+    with q3:
+
+        if st.button(
+            "🚜 F-07",
+            use_container_width=True,
+        ):
+
+            st.session_state.machine = (
+                EXAMPLES[2][0]
+            )
+
+            st.session_state.problem = (
+                EXAMPLES[2][1]
+            )
+
+            st.rerun()
+
+    st.write("")
 
     # --------------------------------------------------------
     # ANALYZE BUTTON
     # --------------------------------------------------------
 
-    if analyze:
+    analyze_button = st.button(
+        "🔎 Recall & Analyze",
+        type="primary",
+        use_container_width=True,
+    )
 
-        st.session_state.answer = ""
+    if analyze_button:
 
-        st.session_state.saved = False
-
-
-        if not problem.strip():
+        if not machine.strip():
 
             st.warning(
-                "Describe the current problem first."
+                "Please enter a machine or asset."
             )
 
+        elif not problem.strip():
+
+            st.warning(
+                "Please describe the current problem."
+            )
 
         else:
 
-            recall_failed = False
+            st.session_state.answer = ""
+            st.session_state.saved = False
+            st.session_state.analyzed = False
 
+            # --------------------------------------------
+            # RECALL
+            # --------------------------------------------
 
             with st.spinner(
-                "Searching organizational memory..."
+                "🧠 Searching Hindsight memory..."
             ):
 
                 try:
 
+                    memories = recall_memories(
+                        problem
+                    )
+
                     st.session_state.memories = (
-                        recall_memories(problem)
+                        memories
                     )
 
                     st.session_state.analyzed = True
-
 
                 except Exception as e:
 
                     st.session_state.memories = []
 
-                    recall_failed = True
-
                     st.error(
-                        f"Hindsight recall failed: {e}"
+                        "Could not retrieve historical "
+                        "memory."
                     )
 
+                    with st.expander(
+                        "Technical details"
+                    ):
 
-            if not recall_failed:
+                        st.code(str(e))
+
+            # --------------------------------------------
+            # REASON
+            # --------------------------------------------
+
+            if st.session_state.analyzed:
 
                 with st.spinner(
-                    "Reasoning from past experience..."
+                    "🤖 Analyzing historical experience..."
                 ):
 
                     try:
 
-                        st.session_state.answer = ask_groq(
+                        prompt = build_prompt(
+                            machine,
+                            problem,
+                            st.session_state.memories,
+                        )
 
-                            build_prompt(
-                                machine,
-                                problem,
-                                st.session_state.memories
-                            )
+                        answer = ask_groq(
+                            prompt
+                        )
 
+                        st.session_state.answer = (
+                            answer
                         )
 
                     except Exception as e:
 
                         st.error(
-                            f"Groq reasoning failed: {e}"
+                            "Could not generate the "
+                            "AI handover brief."
                         )
 
+                        with st.expander(
+                            "Technical details"
+                        ):
 
-                if st.session_state.answer:
+                            st.code(str(e))
 
-                    st.rerun()
+    # ========================================================
+    # AI RESULT
+    # ========================================================
 
+    st.divider()
 
-    # --------------------------------------------------------
-    # RIGHT — NEXT SHIFT BRIEF
-    # --------------------------------------------------------
+    st.subheader(
+        "📋 Shift Handover Brief"
+    )
 
-    with right:
+    st.caption(
+        "Decision support built from historical "
+        "operational memory."
+    )
+
+    if st.session_state.answer:
 
         st.markdown(
-            '<div class="section-title">'
-            '📋 Next shift brief'
-            '</div>',
-            unsafe_allow_html=True
+            st.session_state.answer
         )
 
+        st.divider()
 
-        st.markdown(
-            '<div class="section-sub">'
-            'Decision support built from your own history.'
-            '</div>',
-            unsafe_allow_html=True
-        )
+        if st.session_state.memories:
 
-
-        if st.session_state.answer:
-
-            with st.container(
-                border=True
-            ):
-
-                st.markdown(
-                    st.session_state.answer
-                )
-
-
-                if not st.session_state.memories:
-
-                    st.warning(
-                        "No similar past incidents were found, "
-                        "so treat this as general guidance only."
-                    )
-
-
-            # =================================================
-            # PATTERN DETECTED
-            # =================================================
-
-            if st.session_state.memories:
-
-                st.markdown("---")
-
-                st.markdown(
-                    "### 🧠 Pattern Detected"
-                )
-
-
-                st.info(
-                    """
-**M-204 has a recurring E17 pattern.**
-
-Historical memory shows:
-
-- E17 has appeared across multiple shifts.
-- Restarting alone did not reliably solve it.
-- Sensor cleaning alone did not reliably solve it.
-- Connector inspection/re-seating helped in some cases.
-- Sensor cable replacement was repeatedly associated with successful resolution.
-
-**ShiftMind insight:**
-
-Don't automatically repeat the same first response.
-
-Check the historical pattern and follow your site's approved troubleshooting procedure.
-
-**Why this matters:**
-
-ShiftMind is using accumulated operational memory, not just the current message.
-"""
-                )
-
+            st.success(
+                "🧠 Hindsight contributed "
+                f"{len(st.session_state.memories)} "
+                "relevant historical memory item(s)."
+            )
 
         else:
 
-            with st.container(
-                border=True
-            ):
-
-                st.info(
-                    "No brief yet. Enter a problem and click "
-                    "**Recall & Analyze** to see what previous "
-                    "shifts learned."
-                )
-
-
-# ============================================================
-# TAB 2 — MEMORY
-# ============================================================
-
-with tab_memory:
-
-    st.markdown(
-        '<div class="section-title">'
-        '🧠 What the organization remembers'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-
-    st.markdown(
-        '<div class="section-sub">'
-        'Past incidents recalled for the current problem.'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-
-    if st.session_state.memories:
-
-        for i, text in enumerate(
-            st.session_state.memories,
-            1
-        ):
-
-            safe = (
-                html.escape(text)
-                .replace("\n", "<br>")
+            st.warning(
+                "⚠️ No relevant historical memories "
+                "were found."
             )
 
-
-            st.markdown(
-
-                f'''
-<div class="mem-card">
-
-<span class="mem-badge">
-Memory {i}
-</span>
-
-<br>
-
-{safe}
-
-</div>
-''',
-
-                unsafe_allow_html=True
-            )
-
-
-    elif st.session_state.analyzed:
-
-        st.warning(
-            "Nothing similar found in memory yet. "
-            "Store an incident and try again."
+        st.markdown(
+            "### 🔍 Historical Pattern Signal"
         )
 
+        if st.session_state.memories:
+
+            st.info(
+                """
+                Historical evidence was found for
+                this incident.
+
+                Review the recalled memories before
+                deciding what action to take.
+
+                ShiftMind does not assume a pattern
+                unless the historical evidence supports it.
+                """
+            )
+
+        else:
+
+            st.info(
+                "No historical pattern can be established "
+                "from the available memory."
+            )
+
+        st.markdown(
+            "### 👤 Human Decision Required"
+        )
+
+        st.warning(
+            """
+            ShiftMind provides decision support,
+            not autonomous control.
+
+            Follow approved procedures and use
+            professional judgment before taking
+            operational action.
+            """
+        )
 
     else:
 
         st.info(
-            "Run **Recall & Analyze** to retrieve "
-            "previous shift experience."
+            "💡 Enter an incident above and click "
+            "**Recall & Analyze** to generate the "
+            "handover brief."
         )
 
 
 # ============================================================
-# TAB 3 — LEARN / RETAIN
+# INSTITUTIONAL MEMORY
 # ============================================================
 
-with tab_learn:
+with tab_memory:
 
-    st.markdown(
-        '<div class="section-title">'
-        '🔄 Close the learning loop'
-        '</div>',
-        unsafe_allow_html=True
+    st.subheader(
+        "🧠 Institutional Memory"
     )
 
-
-    st.markdown(
-        '<div class="section-sub">'
-        'Record what the operator did so future shifts '
-        'can learn from it.'
-        '</div>',
-        unsafe_allow_html=True
+    st.caption(
+        "Historical operational experience retrieved "
+        "from Hindsight."
     )
 
+    if st.session_state.memories:
 
-    c1, c2 = st.columns(
-        2,
-        gap="large"
+        st.success(
+            f"Found {len(st.session_state.memories)} "
+            "relevant historical memory item(s)."
+        )
+
+        for index, memory_text in enumerate(
+            st.session_state.memories,
+            1,
+        ):
+
+            with st.expander(
+                f"🧠 Memory {index}",
+                expanded=True,
+            ):
+
+                st.write(
+                    memory_text
+                )
+
+        st.info(
+            "💡 These memories were supplied to the "
+            "AI reasoning layer so previous experience "
+            "could influence the current brief."
+        )
+
+    else:
+
+        st.info(
+            "📭 No memories are currently displayed. "
+            "Analyze an incident first."
+        )
+
+
+# ============================================================
+# RECORD OUTCOME
+# ============================================================
+
+with tab_outcome:
+
+    st.subheader(
+        "💾 Record the Outcome"
     )
 
+    st.caption(
+        "Close the learning loop by recording "
+        "what happened after the action."
+    )
 
-    with c1:
+    if not st.session_state.analyzed:
+
+        st.info(
+            "First analyze an incident, then return "
+            "here to record the outcome."
+        )
+
+    else:
 
         action_taken = st.text_input(
-
-            "Action taken",
-
+            "🛠️ Action Taken",
             placeholder=(
-                "Example: Sensor cable inspected and replaced"
+                "Example: Sensor cable was inspected "
+                "and replaced."
             ),
         )
 
-
-    with c2:
-
         outcome = st.selectbox(
-
-            "Outcome",
-
+            "📌 Outcome",
             [
                 "Resolved",
                 "Partially resolved",
                 "Not resolved",
-                "Escalated to maintenance"
+                "Escalated to maintenance",
             ],
         )
 
+        st.write("")
 
-    if st.button(
+        save_button = st.button(
+            "💾 Save Outcome to Hindsight",
+            type="primary",
+            use_container_width=True,
+        )
 
-        "💾 Save outcome to Hindsight",
+        if save_button:
 
-        type="primary",
+            if not action_taken.strip():
 
-        use_container_width=True
+                st.warning(
+                    "Please describe the action taken."
+                )
 
-    ):
+            else:
 
-        if not action_taken.strip():
-
-            st.warning(
-                "Enter the action taken first."
-            )
-
-
-        elif not st.session_state.problem.strip():
-
-            st.warning(
-                "Describe the problem first."
-            )
-
-
-        else:
-
-            content = f"""
+                content = f"""
 Warehouse shift outcome.
 
 Machine:
@@ -1337,43 +1119,61 @@ Action taken:
 Outcome:
 {outcome}
 
-This outcome is part of ShiftMind's organizational learning
-and should be considered during future similar incidents.
+This outcome is part of ShiftMind's
+organizational learning and may help
+future shifts handle similar incidents.
 """
 
+                try:
 
-            try:
+                    with st.spinner(
+                        "💾 Saving outcome to Hindsight..."
+                    ):
 
-                memory.retain(
+                        memory.retain(
+                            bank_id=BANK_ID,
+                            content=content.strip(),
+                            context=(
+                                "Warehouse shift outcome "
+                                "and institutional learning"
+                            ),
+                        )
 
-                    bank_id=BANK_ID,
+                    st.session_state.saved = True
 
-                    content=content.strip(),
+                    st.success(
+                        "✅ Outcome successfully saved "
+                        "to Hindsight."
+                    )
 
-                    context=(
-                        "Warehouse shift outcome and "
-                        "organizational learning"
-                    ),
-                )
+                    st.info(
+                        "🧠 The new learning may take "
+                        "a short time to become searchable."
+                    )
 
+                except Exception as e:
 
-                st.session_state.saved = True
+                    st.error(
+                        "Could not save the outcome."
+                    )
 
+                    with st.expander(
+                        "Technical details"
+                    ):
 
-                st.success(
-                    "✅ Outcome saved. "
-                    "It may take a few seconds to become searchable."
-                )
+                        st.code(str(e))
 
+        if st.session_state.saved:
 
-                st.balloons()
+            st.success(
+                "🎯 Learning loop complete: "
+                "Recall → Reason → Resolve → Retain"
+            )
 
-
-            except Exception as e:
-
-                st.error(
-                    f"Could not save outcome: {e}"
-                )
+            st.info(
+                "The outcome has been stored in Hindsight "
+                "for future incident analysis."
+            )
 
 
 # ============================================================
@@ -1382,7 +1182,16 @@ and should be considered during future similar incidents.
 
 st.divider()
 
+st.caption(
+    "🧠 ShiftMind • AI Institutional Memory "
+    "for Operational Teams"
+)
 
 st.caption(
-    "ShiftMind • Recall → Reason → Resolve → Retain"
+    "🔄 Recall → Reason → Resolve → Retain"
+)
+
+st.caption(
+    "👤 AI provides decision support. "
+    "Human operators remain responsible for final decisions."
 )
