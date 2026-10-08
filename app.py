@@ -134,9 +134,49 @@ st.markdown(
     /* Streamlit chrome */
     #MainMenu, footer { visibility: hidden; }
     header[data-testid="stHeader"] { background: transparent; }
-    [data-testid="stToolbar"] { visibility: hidden; }
-    [data-testid="collapsedControl"], [data-testid="stExpandSidebarButton"] { color: #e5e7ff !important; }
-    [data-testid="collapsedControl"] svg, [data-testid="stExpandSidebarButton"] svg { fill: #e5e7ff !important; color: #e5e7ff !important; }
+    /* Keep the toolbar: the sidebar reopen button lives inside it.
+       Hide only the right-side items (deploy button, menu). */
+    [data-testid="stToolbar"] {
+        visibility: visible !important;
+        display: flex !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        z-index: 999999 !important;
+    }
+    [data-testid="stToolbarActions"],
+    [data-testid="stMainMenu"],
+    [data-testid="stAppDeployButton"],
+    .stDeployButton { display: none !important; }
+
+    /* Sidebar reopen button (different test IDs across Streamlit versions) */
+    [data-testid="collapsedControl"],
+    [data-testid="stExpandSidebarButton"] {
+        visibility: visible !important;
+        display: flex !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        position: relative !important;
+        z-index: 999999 !important;
+        color: #e5e7ff !important;
+        background: rgba(255, 255, 255, 0.10) !important;
+        border-radius: 8px !important;
+        cursor: pointer !important;
+    }
+    [data-testid="collapsedControl"] button,
+    [data-testid="stExpandSidebarButton"] button {
+        visibility: visible !important;
+        display: flex !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        cursor: pointer !important;
+    }
+    [data-testid="collapsedControl"] svg,
+    [data-testid="stExpandSidebarButton"] svg {
+        visibility: visible !important;
+        display: block !important;
+        fill: #e5e7ff !important;
+        color: #e5e7ff !important;
+    }
 
     .block-container {
         padding-top: 1.2rem !important;
