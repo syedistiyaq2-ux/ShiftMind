@@ -615,6 +615,29 @@ def recall_memories(problem):
 
 
 # ============================================================
+# HINDSIGHT RETAIN
+# ============================================================
+
+def retain_memory(content, context):
+    """Store a memory using a fresh client in a worker thread
+    (same approach as recall_memories, avoids 'Event loop is closed')."""
+
+    def worker():
+        local_memory = Hindsight(
+            base_url=HINDSIGHT_API_URL,
+            api_key=HINDSIGHT_API_KEY,
+        )
+        return local_memory.retain(
+            bank_id=BANK_ID,
+            content=content,
+            context=context,
+        )
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(worker).result()
+
+
+# ============================================================
 # AI PROMPT
 # ============================================================
 
@@ -1025,10 +1048,9 @@ with st.sidebar:
 
                 for incident in demo_incidents:
 
-                    memory.retain(
-                        bank_id=BANK_ID,
-                        content=incident,
-                        context="Warehouse shift incident",
+                    retain_memory(
+                        incident,
+                        "Warehouse shift incident",
                     )
 
                 st.success(
@@ -1494,13 +1516,9 @@ future shifts handle similar incidents.
                             "Saving outcome to Hindsight..."
                         ):
 
-                            memory.retain(
-                                bank_id=BANK_ID,
-                                content=content.strip(),
-                                context=(
-                                    "Warehouse shift outcome "
-                                    "and institutional learning"
-                                ),
+                            retain_memory(
+                                content.strip(),
+                                "Warehouse shift outcome and institutional learning",
                             )
 
                         st.session_state.saved = True
